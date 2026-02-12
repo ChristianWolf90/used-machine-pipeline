@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.enums import MachineStatus, UserRole
@@ -14,6 +14,21 @@ def _days_between(start: date | None, end: date | None) -> int | None:
     if not start or not end:
         return None
     return (end - start).days
+
+
+def get_total_process_days(machine: Machine, today: date | None = None) -> int:
+    today = today or date.today()
+    process_end = machine.dt_sale_ready or today
+    return max((process_end - machine.dt_rental_exit).days, 0)
+
+
+def get_traffic_light(total_process_days: int) -> str:
+    # Ampellogik für Gesamtverweildauer im Prozess.
+    if total_process_days < 30:
+        return 'GREEN'
+    if total_process_days <= 45:
+        return 'YELLOW'
+    return 'RED'
 
 
 def validate_machine_dates(machine: Machine) -> None:
@@ -79,6 +94,30 @@ def compute_kpi(machine: Machine, today: date | None = None) -> MachineKPI:
     )
 
 
+def to_machine_response(machine: Machine, today: date | None = None) -> dict:
+    total_process_days = get_total_process_days(machine, today)
+    return {
+        'id': machine.id,
+        'machine_number': machine.machine_number,
+        'type_model': machine.type_model,
+        'value_class': machine.value_class,
+        'estimated_market_value_eur': machine.estimated_market_value_eur,
+        'rental_origin_site': machine.rental_origin_site,
+        'refurb_site': machine.refurb_site,
+        'status': machine.status,
+        'dt_rental_exit': machine.dt_rental_exit,
+        'dt_arrival_refurb': machine.dt_arrival_refurb,
+        'dt_workshop_start': machine.dt_workshop_start,
+        'dt_tech_done': machine.dt_tech_done,
+        'dt_sale_ready': machine.dt_sale_ready,
+        'notes': machine.notes,
+        'created_at': machine.created_at,
+        'updated_at': machine.updated_at,
+        'total_process_days': total_process_days,
+        'traffic_light': get_traffic_light(total_process_days),
+    }
+
+
 def list_machines(db: Session, site: str | None, status: str | None, older_than_days: int | None) -> list[Machine]:
     query = select(Machine)
     if site:
@@ -117,66 +156,142 @@ def update_machine(db: Session, machine: Machine, payload: MachineUpdate, role: 
     return machine
 
 
-def get_overview(db: Session) -> dict:
+def _safe_avg(values: list[int]) -> float:
+    return round(sum(values) / len(values), 2) if values else 0.0
+
+
+def get_dashboard_operations(db: Session) -> dict:
     machines = db.scalars(select(Machine)).all()
-    status_counts = {status.value: 0 for status in MachineStatus}
-    for m in machines:
-        status_counts[m.status.value] += 1
+    today = date.today()
 
-    by_site: dict[str, list[Machine]] = {}
-    for m in machines:
-        by_site.setdefault(m.refurb_site.value, []).append(m)
+    total_days = [get_total_process_days(machine, today) for machine in machines]
+    arrival_days = [max((today - machine.dt_arrival_refurb).days, 0) for machine in machines if machine.dt_arrival_refurb]
 
-    avg_total_days_by_site: dict[str, float] = {}
-    capital_binding_by_site: dict[str, Decimal] = {}
-    all_kpi = [compute_kpi(m) for m in machines]
-    for site, site_machines in by_site.items():
-        totals = [k.total_days_to_sale_ready for k in (compute_kpi(m) for m in site_machines) if k.total_days_to_sale_ready is not None]
-        avg_total_days_by_site[site] = round(sum(totals) / len(totals), 2) if totals else 0.0
-        capital_binding_by_site[site] = sum((compute_kpi(m).capital_binding or Decimal('0.00')) for m in site_machines)
+    transport_machines = [machine for machine in machines if machine.status == MachineStatus.UNDERWAY]
+    intake_machines = [machine for machine in machines if machine.status == MachineStatus.INTAKE_ASSESSMENT]
+    workshop_machines = [machine for machine in machines if machine.status == MachineStatus.REFURBISHMENT]
+
+    transport_durations = [
+        max((today - machine.dt_rental_exit).days, 0) if machine.dt_arrival_refurb is None else max((machine.dt_arrival_refurb - machine.dt_rental_exit).days, 0)
+        for machine in machines
+        if machine.status == MachineStatus.UNDERWAY or machine.dt_arrival_refurb is not None
+    ]
+    intake_durations = [
+        max((today - machine.dt_arrival_refurb).days, 0) if machine.dt_workshop_start is None else max((machine.dt_workshop_start - machine.dt_arrival_refurb).days, 0)
+        for machine in machines
+        if machine.status == MachineStatus.INTAKE_ASSESSMENT or (machine.dt_arrival_refurb and machine.dt_workshop_start)
+    ]
+    workshop_durations = [
+        max((today - machine.dt_workshop_start).days, 0)
+        if machine.dt_sale_ready is None and machine.dt_tech_done is None
+        else max(((machine.dt_sale_ready or machine.dt_tech_done) - machine.dt_workshop_start).days, 0)
+        for machine in machines
+        if machine.status == MachineStatus.REFURBISHMENT or machine.dt_workshop_start is not None
+    ]
+
+    oldest_transports = sorted(
+        (
+            {
+                'machine_id': str(machine.id),
+                'machine_number': machine.machine_number,
+                'refurb_site': machine.refurb_site.value,
+                'transport_days': max((today - machine.dt_rental_exit).days, 0),
+                'total_process_days': get_total_process_days(machine, today),
+                'traffic_light': get_traffic_light(get_total_process_days(machine, today)),
+            }
+            for machine in transport_machines
+        ),
+        key=lambda item: item['transport_days'],
+        reverse=True,
+    )[:5]
+
+    intake_highlights = []
+    for machine in intake_machines:
+        stage_days = max((today - machine.dt_arrival_refurb).days, 0) if machine.dt_arrival_refurb else 0
+        intake_highlights.append(
+            {
+                'machine_id': str(machine.id),
+                'machine_number': machine.machine_number,
+                'refurb_site': machine.refurb_site.value,
+                'status': machine.status.value,
+                'stage_days': stage_days,
+                'total_process_days': get_total_process_days(machine, today),
+                'estimated_market_value_eur': float(machine.estimated_market_value_eur) if machine.estimated_market_value_eur else None,
+                'traffic_light': get_traffic_light(get_total_process_days(machine, today)),
+            }
+        )
+
+    workshop_highlights = []
+    for machine in workshop_machines:
+        stage_days = max((today - machine.dt_workshop_start).days, 0) if machine.dt_workshop_start else 0
+        workshop_highlights.append(
+            {
+                'machine_id': str(machine.id),
+                'machine_number': machine.machine_number,
+                'refurb_site': machine.refurb_site.value,
+                'status': machine.status.value,
+                'stage_days': stage_days,
+                'total_process_days': get_total_process_days(machine, today),
+                'estimated_market_value_eur': float(machine.estimated_market_value_eur) if machine.estimated_market_value_eur else None,
+                'traffic_light': get_traffic_light(get_total_process_days(machine, today)),
+            }
+        )
 
     return {
-        'status_counts': status_counts,
-        'avg_total_days_by_site': avg_total_days_by_site,
-        'aging_over_30': len([k for k in all_kpi if k.days_in_current_status > 30]),
-        'aging_over_45': len([k for k in all_kpi if k.days_in_current_status > 45]),
-        'capital_binding_by_site': capital_binding_by_site,
+        'top_kpis': {
+            'total_machines_in_process': len(machines),
+            'average_days_since_arrival': _safe_avg(arrival_days),
+            'machines_over_30_days': len([days for days in total_days if days > 30]),
+            'machines_over_45_days': len([days for days in total_days if days > 45]),
+        },
+        'transport': {
+            'average_transport_days': _safe_avg(transport_durations),
+            'underway_count': len(transport_machines),
+            'oldest_transports': oldest_transports,
+        },
+        'intake_assessment': {
+            'average_arrival_to_workshop_days': _safe_avg(intake_durations),
+            'intake_assessment_count': len(intake_machines),
+            'highlighted_machines': sorted(intake_highlights, key=lambda item: item['stage_days'], reverse=True),
+        },
+        'workshop': {
+            'average_workshop_to_done_days': _safe_avg(workshop_durations),
+            'refurbishment_count': len(workshop_machines),
+            'highlighted_machines': sorted(workshop_highlights, key=lambda item: item['stage_days'], reverse=True),
+        },
     }
 
 
-def get_site_comparison(db: Session) -> list[dict]:
+def get_site_worklist(db: Session, site: str | None, status: str | None) -> list[dict]:
     machines = db.scalars(select(Machine)).all()
-    grouped: dict[str, list[Machine]] = {}
-    for m in machines:
-        grouped.setdefault(m.refurb_site.value, []).append(m)
+    today = date.today()
 
-    result = []
-    for site, items in grouped.items():
-        kpis = [compute_kpi(m) for m in items]
-        totals = [k.total_days_to_sale_ready for k in kpis if k.total_days_to_sale_ready is not None]
-        result.append(
+    filtered = []
+    for machine in machines:
+        if site and machine.refurb_site.value != site:
+            continue
+        if status and machine.status.value != status:
+            continue
+        total_days = get_total_process_days(machine, today)
+        filtered.append(
             {
-                'site': site,
-                'machine_count': len(items),
-                'avg_total_days': round(sum(totals) / len(totals), 2) if totals else 0.0,
-                'capital_binding': sum((k.capital_binding or Decimal('0.00')) for k in kpis),
+                'machine_id': str(machine.id),
+                'machine_number': machine.machine_number,
+                'refurb_site': machine.refurb_site.value,
+                'status': machine.status.value,
+                'total_process_days': total_days,
+                'estimated_market_value_eur': float(machine.estimated_market_value_eur) if machine.estimated_market_value_eur else None,
+                'traffic_light': get_traffic_light(total_days),
             }
         )
-    return sorted(result, key=lambda x: x['site'])
 
-
-def get_slowest(db: Session) -> list[dict]:
-    machines = db.scalars(select(Machine)).all()
-    data = []
-    for m in machines:
-        kpi = compute_kpi(m)
-        data.append(
-            {
-                'machine_number': m.machine_number,
-                'refurb_site': m.refurb_site.value,
-                'status': m.status.value,
-                'days_in_current_status': kpi.days_in_current_status,
-                'total_days_to_sale_ready': kpi.total_days_to_sale_ready,
-            }
-        )
-    return sorted(data, key=lambda x: x['days_in_current_status'], reverse=True)[:10]
+    # Priorisierung für die Standort-Arbeitsliste: Rot, Gelb, Grün.
+    light_priority = {'RED': 0, 'YELLOW': 1, 'GREEN': 2}
+    return sorted(
+        filtered,
+        key=lambda item: (
+            light_priority.get(item['traffic_light'], 3),
+            -((item['estimated_market_value_eur']) or 0),
+            -item['total_process_days'],
+        ),
+    )

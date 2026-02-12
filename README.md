@@ -34,15 +34,16 @@ Services:
 - `GET /machines`
 - `POST /machines`
 - `PUT /machines/{id}`
-- `GET /dashboard/overview`
-- `GET /dashboard/site-comparison`
-- `GET /dashboard/slowest`
+- `GET /dashboard/operations`
+- `GET /dashboard/site-worklist`
 
 ## Geschäftslogik
 
 - Statusvalidierung inkl. Pflichtfeldern beim Übergang.
 - Chronologische Datumsvalidierung.
-- KPI-Berechnung pro Maschine (Transport-, Intake-, Refurb-, Gesamtdauer, Kapitalbindung).
+- KPI-Berechnung pro Maschine inkl. Ampellogik (GREEN < 30, YELLOW 30-45, RED > 45 Tage).
+- Operatives Dashboard mit Transport-, Intake- und Werkstatt-Transparenzblöcken.
+- Standort-Arbeitsliste mit Priorisierung (Rot, Gelb, Marktwert, Alter).
 - SiteUser darf nur Maschinen des eigenen `refurb_site` ändern.
 
 ## Projektstruktur

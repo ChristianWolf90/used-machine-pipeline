@@ -46,6 +46,8 @@ class MachineResponse(MachineBase):
     id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+    total_process_days: int
+    traffic_light: str
 
     class Config:
         from_attributes = True
