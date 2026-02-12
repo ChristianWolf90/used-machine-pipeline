@@ -36,6 +36,7 @@ Services:
 - `PUT /machines/{id}`
 - `GET /dashboard/operations`
 - `GET /dashboard/site-worklist`
+- `GET /dashboard/period-summary?days=30`
 
 ## Geschäftslogik
 
@@ -43,6 +44,7 @@ Services:
 - Chronologische Datumsvalidierung.
 - KPI-Berechnung pro Maschine inkl. Ampellogik (GREEN < 30, YELLOW 30-45, RED > 45 Tage).
 - Operatives Dashboard mit Transport-, Intake- und Werkstatt-Transparenzblöcken.
+- Zeitraum-Übersicht im Dashboard (7/30/90 Tage) mit aggregierten Arrival-/Completion- und Durchlauf-KPIs.
 - Standort-Arbeitsliste mit Priorisierung (Rot, Gelb, Marktwert, Alter).
 - SiteUser darf nur Maschinen des eigenen `refurb_site` ändern.
 

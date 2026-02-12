@@ -2,8 +2,12 @@ import {
   Card,
   CardContent,
   Chip,
+  FormControl,
   Grid2,
+  InputLabel,
+  MenuItem,
   Paper,
+  Select,
   Table,
   TableBody,
   TableCell,
@@ -59,6 +63,16 @@ interface OperationsDashboard {
   }
 }
 
+interface DashboardPeriodSummary {
+  days: number
+  arrived_count: number
+  sale_ready_count: number
+  average_transport_days: number
+  average_refurbishment_days: number
+  average_total_lead_time_days: number
+  median_total_lead_time_days?: number | null
+}
+
 const lightColor: Record<TrafficLight, 'success' | 'warning' | 'error'> = {
   GREEN: 'success',
   YELLOW: 'warning',
@@ -67,21 +81,62 @@ const lightColor: Record<TrafficLight, 'success' | 'warning' | 'error'> = {
 
 export default function DashboardPage() {
   const [dashboard, setDashboard] = useState<OperationsDashboard | null>(null)
+  const [periodSummary, setPeriodSummary] = useState<DashboardPeriodSummary | null>(null)
+  const [periodDays, setPeriodDays] = useState<number>(30)
 
   useEffect(() => {
     const load = async () => {
-      const { data } = await api.get<OperationsDashboard>('/dashboard/operations')
-      setDashboard(data)
+      const [{ data: operationsData }, { data: periodData }] = await Promise.all([
+        api.get<OperationsDashboard>('/dashboard/operations'),
+        api.get<DashboardPeriodSummary>('/dashboard/period-summary', { params: { days: periodDays } }),
+      ])
+      setDashboard(operationsData)
+      setPeriodSummary(periodData)
     }
     void load()
-  }, [])
+  }, [periodDays])
 
-  if (!dashboard) return <Typography>Lade Transparenz-Cockpit...</Typography>
+  if (!dashboard || !periodSummary) return <Typography>Lade Transparenz-Cockpit...</Typography>
 
   return (
     <Grid2 container spacing={2}>
       <Grid2 size={12}>
         <Typography variant="h5">Operatives Transparenz-Cockpit</Typography>
+      </Grid2>
+
+      <Grid2 size={12}>
+        <Card>
+          <CardContent>
+            <Grid2 container spacing={2} alignItems="center" sx={{ mb: 2 }}>
+              <Grid2 size={{ xs: 12, md: 8 }}>
+                <Typography variant="h6">Zeitraum-Übersicht (letzte {periodSummary.days} Tage)</Typography>
+              </Grid2>
+              <Grid2 size={{ xs: 12, md: 4 }} sx={{ display: 'flex', justifyContent: { md: 'flex-end' } }}>
+                <FormControl size="small" sx={{ minWidth: 140 }}>
+                  <InputLabel id="period-select-label">Zeitraum</InputLabel>
+                  <Select
+                    labelId="period-select-label"
+                    value={periodDays}
+                    label="Zeitraum"
+                    onChange={(event) => setPeriodDays(Number(event.target.value))}
+                  >
+                    <MenuItem value={7}>7 Tage</MenuItem>
+                    <MenuItem value={30}>30 Tage</MenuItem>
+                    <MenuItem value={90}>90 Tage</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid2>
+            </Grid2>
+
+            <Grid2 container spacing={2}>
+              <Grid2 size={{ xs: 12, md: 2.4 }}><Card variant="outlined"><CardContent><Typography variant="subtitle2">Neu eingetroffen</Typography><Typography variant="h4">{periodSummary.arrived_count}</Typography></CardContent></Card></Grid2>
+              <Grid2 size={{ xs: 12, md: 2.4 }}><Card variant="outlined"><CardContent><Typography variant="subtitle2">Fertiggestellt</Typography><Typography variant="h4">{periodSummary.sale_ready_count}</Typography></CardContent></Card></Grid2>
+              <Grid2 size={{ xs: 12, md: 2.4 }}><Card variant="outlined"><CardContent><Typography variant="subtitle2">Ø Transportdauer</Typography><Typography variant="h4">{periodSummary.average_transport_days}</Typography><Typography variant="body2">Tage</Typography></CardContent></Card></Grid2>
+              <Grid2 size={{ xs: 12, md: 2.4 }}><Card variant="outlined"><CardContent><Typography variant="subtitle2">Ø Aufbereitungsdauer</Typography><Typography variant="h4">{periodSummary.average_refurbishment_days}</Typography><Typography variant="body2">Tage</Typography></CardContent></Card></Grid2>
+              <Grid2 size={{ xs: 12, md: 2.4 }}><Card variant="outlined"><CardContent><Typography variant="subtitle2">Ø Gesamtdurchlaufzeit</Typography><Typography variant="h4">{periodSummary.average_total_lead_time_days}</Typography><Typography variant="body2">Tage</Typography></CardContent></Card></Grid2>
+            </Grid2>
+          </CardContent>
+        </Card>
       </Grid2>
 
       <Grid2 size={3}><Card><CardContent><Typography variant="subtitle2">Gesamtmaschinen im Prozess</Typography><Typography variant="h4">{dashboard.top_kpis.total_machines_in_process}</Typography></CardContent></Card></Grid2>
