@@ -1,22 +1,22 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from app.core.deps import DbDep, UserDep
-from app.schemas.dashboard import OverviewResponse, SiteComparisonItem, SlowestMachineItem
-from app.services.machine_service import get_overview, get_site_comparison, get_slowest
+from app.schemas.dashboard import DashboardOperationsResponse, SiteWorklistResponse
+from app.services.machine_service import get_dashboard_operations, get_site_worklist
 
 router = APIRouter(prefix='/dashboard', tags=['dashboard'])
 
 
-@router.get('/overview', response_model=OverviewResponse)
-def overview(db: DbDep, _: UserDep) -> OverviewResponse:
-    return OverviewResponse(**get_overview(db))
+@router.get('/operations', response_model=DashboardOperationsResponse)
+def operations(db: DbDep, _: UserDep) -> DashboardOperationsResponse:
+    return DashboardOperationsResponse(**get_dashboard_operations(db))
 
 
-@router.get('/site-comparison', response_model=list[SiteComparisonItem])
-def site_comparison(db: DbDep, _: UserDep) -> list[SiteComparisonItem]:
-    return [SiteComparisonItem(**item) for item in get_site_comparison(db)]
-
-
-@router.get('/slowest', response_model=list[SlowestMachineItem])
-def slowest(db: DbDep, _: UserDep) -> list[SlowestMachineItem]:
-    return [SlowestMachineItem(**item) for item in get_slowest(db)]
+@router.get('/site-worklist', response_model=SiteWorklistResponse)
+def site_worklist(
+    db: DbDep,
+    _: UserDep,
+    site: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+) -> SiteWorklistResponse:
+    return SiteWorklistResponse(items=get_site_worklist(db, site=site, status=status))

@@ -7,6 +7,7 @@ import LoginPage from './pages/LoginPage'
 import MachineListPage from './pages/MachineListPage'
 import MachineDetailPage from './pages/MachineDetailPage'
 import DashboardPage from './pages/DashboardPage'
+import SiteOverviewPage from './pages/SiteOverviewPage'
 import { getSession } from './auth/auth'
 
 function PrivateRoute({ children }: { children: JSX.Element }) {
@@ -25,6 +26,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path="/machines" element={<MachineListPage />} />
           <Route path="/machines/:id" element={<MachineDetailPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/site-overview" element={<SiteOverviewPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/machines" replace />} />
       </Routes>

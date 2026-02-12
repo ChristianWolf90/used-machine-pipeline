@@ -13,6 +13,7 @@ export default function Layout() {
           <Typography variant="h6" sx={{ flexGrow: 1 }}>Used Machine Pipeline</Typography>
           <Button color="inherit" component={Link} to="/machines">Machines</Button>
           <Button color="inherit" component={Link} to="/dashboard">Dashboard</Button>
+          <Button color="inherit" component={Link} to="/site-overview">Standort Übersicht</Button>
           <Button
             color="inherit"
             onClick={() => {

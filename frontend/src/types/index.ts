@@ -17,6 +17,8 @@ export interface Machine {
   notes?: string
   created_at: string
   updated_at: string
+  total_process_days: number
+  traffic_light: 'GREEN' | 'YELLOW' | 'RED'
 }
 
 export interface LoginResponse {
