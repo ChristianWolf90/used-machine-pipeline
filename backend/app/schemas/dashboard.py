@@ -65,3 +65,13 @@ class SiteWorklistItem(BaseModel):
 
 class SiteWorklistResponse(BaseModel):
     items: list[SiteWorklistItem]
+
+
+class DashboardPeriodSummaryResponse(BaseModel):
+    days: int
+    arrived_count: int
+    sale_ready_count: int
+    average_transport_days: float
+    average_refurbishment_days: float
+    average_total_lead_time_days: float
+    median_total_lead_time_days: float | None = None

@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Query
 
 from app.core.deps import DbDep, UserDep
-from app.schemas.dashboard import DashboardOperationsResponse, SiteWorklistResponse
-from app.services.machine_service import get_dashboard_operations, get_site_worklist
+from app.schemas.dashboard import DashboardOperationsResponse, DashboardPeriodSummaryResponse, SiteWorklistResponse
+from app.services.machine_service import get_dashboard_operations, get_dashboard_period_summary, get_site_worklist
 
 router = APIRouter(prefix='/dashboard', tags=['dashboard'])
 
@@ -20,3 +20,12 @@ def site_worklist(
     status: str | None = Query(default=None),
 ) -> SiteWorklistResponse:
     return SiteWorklistResponse(items=get_site_worklist(db, site=site, status=status))
+
+
+@router.get('/period-summary', response_model=DashboardPeriodSummaryResponse)
+def period_summary(
+    db: DbDep,
+    _: UserDep,
+    days: int = Query(default=30, ge=1),
+) -> DashboardPeriodSummaryResponse:
+    return DashboardPeriodSummaryResponse(**get_dashboard_period_summary(db, days=days))

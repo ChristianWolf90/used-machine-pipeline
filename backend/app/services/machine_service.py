@@ -1,5 +1,6 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
+from statistics import median
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -295,3 +296,36 @@ def get_site_worklist(db: Session, site: str | None, status: str | None) -> list
             -item['total_process_days'],
         ),
     )
+
+
+def get_dashboard_period_summary(db: Session, days: int = 30) -> dict:
+    today = date.today()
+    period_start = today - timedelta(days=days - 1)
+    machines = db.scalars(select(Machine)).all()
+
+    arrived_machines = [machine for machine in machines if machine.dt_arrival_refurb and period_start <= machine.dt_arrival_refurb <= today]
+    sale_ready_machines = [machine for machine in machines if machine.dt_sale_ready and period_start <= machine.dt_sale_ready <= today]
+
+    transport_durations = [
+        max((machine.dt_arrival_refurb - machine.dt_rental_exit).days, 0)
+        for machine in arrived_machines
+    ]
+    refurbishment_durations = [
+        max((machine.dt_sale_ready - machine.dt_workshop_start).days, 0)
+        for machine in sale_ready_machines
+        if machine.dt_workshop_start
+    ]
+    total_lead_times = [
+        max((machine.dt_sale_ready - machine.dt_rental_exit).days, 0)
+        for machine in sale_ready_machines
+    ]
+
+    return {
+        'days': days,
+        'arrived_count': len(arrived_machines),
+        'sale_ready_count': len(sale_ready_machines),
+        'average_transport_days': _safe_avg(transport_durations),
+        'average_refurbishment_days': _safe_avg(refurbishment_durations),
+        'average_total_lead_time_days': _safe_avg(total_lead_times),
+        'median_total_lead_time_days': round(float(median(total_lead_times)), 2) if total_lead_times else None,
+    }
